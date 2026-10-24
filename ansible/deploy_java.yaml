@@ -1,0 +1,116 @@
+---
+
+- name: Wait for SSH connection
+  hosts: all
+  gather_facts: False
+  tasks:
+    - name: Ensure SSH port open
+      wait_for:
+        port: 22
+        delay: 10
+        timeout: 100
+        search_regex: OpenSSH
+        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
+
+
+- name: Install Java
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Update packages
+      dnf:
+        update_cache: true
+
+    - name: Install software
+      dnf:
+        name: java-17-amazon-corretto.x86_64
+        state: present
+
+
+- name: Ask username and create/verify it exists
+  hosts: all
+  become: yes
+  #gather_facts: false
+
+
+  vars_prompt:
+    - name: linux_username
+      prompt: "Please enter your name to deploy the application"
+      private: false
+
+  tasks:
+
+    - name: Save username as a host fact
+      set_fact:
+        saved_linux_username: "{{ linux_username }}"
+
+    - name: Print the input
+      debug:
+        msg: "Entered username is {{ saved_linux_username }}"
+
+    - name: Query passwd database for user
+      getent:
+        database: passwd
+        key: "{{ saved_linux_username }}"
+        fail_key: false
+
+    - name: Check if user does not exist, then create user
+      debug:
+        msg: "User '{{ saved_linux_username }}' does not exist, creating user..."
+      when: "ansible_facts.getent_passwd[saved_linux_username] is none"
+     # when: linux_username not in ansible_facts.getent_passwd
+
+    - name: Create new user
+      user:
+        name: "{{ saved_linux_username }}"
+        state: present
+     # when: linux_username not in ansible_facts.getent_passwd      
+      when: "ansible_facts.getent_passwd[saved_linux_username] is none"
+
+
+- name: Checking if the file exists, stopping process and removing file
+  hosts: all
+  become: yes
+  become_user: "{{ saved_linux_username }}"
+
+  tasks:
+
+    - name: Finding the application process id, if it exists
+      shell: pgrep -f javafile.jar
+      register: process_id
+      ignore_errors: yes # Ansible doesn't fail if there are errors
+      changed_when: false # prevents Ansible from using a "changed" status, after using command or shell modules
+      failed_when: false # does not display the task as failed, if pid isn't found
+
+
+    - name: Stopping the process if it exists
+      command: kill {{ process_id.stdout }} 
+      when: process_id.rc == 0 #   process_id.rc == 0 works too
+
+    - name: Delete the file
+      file:
+        path: /home/{{ saved_linux_username }}/javafile.jar
+        state: absent
+
+
+- name: Copy the file and deploy
+  hosts: all
+  become: yes
+  become_user: "{{ saved_linux_username }}"
+
+  tasks:
+
+    - name: Copy the file to the server
+      copy:
+        src: ../java-app/build/libs/build-tools-exercises-1.0-SNAPSHOT.jar
+        dest: /home/{{ saved_linux_username }}/javafile.jar
+
+    
+    - name: Start the java application
+      ansible.builtin.command: java -jar /home/{{ saved_linux_username }}/javafile.jar
+      ignore_errors: yes
+      failed_when: false

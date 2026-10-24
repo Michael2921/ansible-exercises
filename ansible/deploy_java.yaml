@@ -62,13 +62,11 @@
       debug:
         msg: "User '{{ saved_linux_username }}' does not exist, creating user..."
       when: "ansible_facts.getent_passwd[saved_linux_username] is none"
-     # when: linux_username not in ansible_facts.getent_passwd
 
     - name: Create new user
       user:
         name: "{{ saved_linux_username }}"
-        state: present
-     # when: linux_username not in ansible_facts.getent_passwd      
+        state: present  
       when: "ansible_facts.getent_passwd[saved_linux_username] is none"
 
 
@@ -89,7 +87,7 @@
 
     - name: Stopping the process if it exists
       command: kill {{ process_id.stdout }} 
-      when: process_id.rc == 0 #   process_id.rc == 0 works too
+      when: process_id.rc == 0 
 
     - name: Delete the file
       file:

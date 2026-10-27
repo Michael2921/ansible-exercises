@@ -1,0 +1,104 @@
+---
+
+- name: Wait for SSH connection
+  hosts: all
+  gather_facts: False
+  tasks:
+    - name: Ensure SSH port open
+      wait_for:
+        port: 22
+        delay: 10
+        timeout: 100
+        search_regex: OpenSSH
+        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
+
+
+- name: Install Java
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Update packages
+      dnf:
+        update_cache: true
+
+    - name: Install software
+      dnf:
+        name: java-21-amazon-corretto.x86_64
+        state: present
+
+
+- name: Install nodejs and npm
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Install nodejs 
+      dnf:
+        name: nodejs.x86_64
+        state: present
+
+
+- name: Install docker and add user to group
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Install docker
+      dnf:
+        name: docker
+        state: present
+
+    - name: Add user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+    - name: Reconnect to server session
+      meta: reset_connection
+
+
+- name: Install Jenkins and start service
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Setup Jenkins repo
+      ansible.builtin.get_url:
+        url:  https://pkg.jenkins.io/rpm-stable/jenkins.repo
+        dest: /etc/yum.repos.d/jenkins.repo
+
+    - name: Install Jenkins
+      dnf:
+        name: jenkins
+        state: present
+
+    - name: Daemon reload
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+        name: jenkins
+
+
+    - name: Start Jenkins service
+      ansible.builtin.systemd_service:
+        state: started
+        name: jenkins
+
+    - name: Verify Jenkins status
+      ansible.builtin.command: systemctl status docker
+      register: docker_status
+      changed_when: false
+      failed_when: false
+
+    - name: Display status
+      ansible.builtin.debug:
+        var: docker_status.stdout_lines
+
+    
+
+
+

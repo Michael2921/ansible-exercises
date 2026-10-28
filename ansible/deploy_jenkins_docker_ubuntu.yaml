@@ -1,0 +1,72 @@
+---
+
+
+- name: Update packages
+  apt:
+    update_cache: true
+
+
+- name: Install pip
+  apt:
+    name: python3-pip
+    state: present
+
+- name: Install docker python module
+  apt:
+    name: python3-docker
+
+
+- name: Install paramiko python module
+  apt:
+    name: python3-paramiko
+
+
+- name: Install docker
+  apt:
+    name: docker.io
+    state: present
+
+
+- name: Add user to docker group
+  user:
+    name: ubuntu
+    groups: docker
+    append: yes
+
+
+- name: Reconnect to server session
+  meta: reset_connection
+
+
+- name: Start Docker service
+  ansible.builtin.systemd_service:
+    state: started
+    name: docker
+
+- name: Run jenkins container
+  become_user: ubuntu
+  community.docker.docker_container: # run ansible-galaxy collection install community.docker --upgrade on machine running terraform
+    name: jenkins
+    ports: 
+      - "8080:8080"
+      - "50000:50000"
+    detach: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/local/bin/docker:/usr/bin/docker
+      - jenkins_home:/var/jenkins_home
+    image: jenkins/jenkins:lts
+
+
+- name: List running docker containers
+  become_user: ubuntu
+  ansible.builtin.command: docker ps
+  register: docker_ps
+  changed_when: false
+
+
+- name: Display output
+  become_user: ubuntu
+  ansible.builtin.debug:
+    var: docker_ps.stdout_lines
+

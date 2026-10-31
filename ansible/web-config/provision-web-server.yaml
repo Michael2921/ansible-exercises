@@ -1,0 +1,105 @@
+---
+
+- name: Wait for SSH connection
+  hosts: web-server
+  gather_facts: False
+  tasks:
+    - name: Ensure SSH port open
+      wait_for:
+        port: 22
+        delay: 10
+        timeout: 100
+        search_regex: OpenSSH
+        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
+
+
+- name: Install required packages
+  become: yes
+  hosts: web-server
+  tasks:
+    - name: Update packages
+      dnf:
+        update_cache: yes
+
+    - name: Install java
+      dnf:
+        name: java-17-amazon-corretto-devel
+        state: present
+
+
+- name: Install Gradle
+  hosts: web-server
+  tasks:
+    - name: Install SDK
+      shell: 'curl -s "https://get.sdkman.io" | bash'
+
+    - name: Install gradle
+      shell: |
+        source /home/ec2-user/.sdkman/bin/sdkman-init.sh
+        sdk install gradle  
+
+
+- name: Copy Java files to web-server
+  hosts: web-server
+  vars_files:
+    - project-vars
+  tasks:
+    - name: Copy java files to web-server
+      copy:
+        src: /home/ec2-user/java-app
+        dest: /home/ec2-user/
+
+
+
+
+- name: Copy inventory file # to get ip of database server
+  hosts: web-server
+  tasks:
+    - name: Copy .ini file
+      copy:
+        src: /home/ec2-user/web-config/inventory.ini
+        dest: /home/ec2-user/java-app/
+
+
+- name: Build the java file
+  hosts: web-server
+  tasks:
+
+    - name: change directory and run gradle build
+      command: "gradle build -p /home/ec2-user/java-app/"
+      register: build_output
+
+    - name: Display build build output
+      ansible.builtin.debug:
+        var: build_output.stdout_lines
+
+
+
+
+- name: Set env variables for MYSQL connection
+  hosts: web-server
+  vars_files:
+    - project-vars
+
+  environment:
+    DB_SERVER: "{{ db_server }}"
+    DB_NAME: example_db
+    DB_USER: appuser
+    DB_PWD: "{{ sql_password }}"
+  
+  tasks:
+
+    - name: Execute java file
+      shell: "java -jar /home/ec2-user/java-app/build/libs/build-tools-exercises-1.0-SNAPSHOT.jar"
+
+
+
+
+
+
+
+
+

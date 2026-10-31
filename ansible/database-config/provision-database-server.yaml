@@ -1,0 +1,63 @@
+---
+
+- name: Wait for SSH connection
+  hosts: database-server
+  gather_facts: False
+  tasks:
+    - name: Ensure SSH port open
+      wait_for:
+        port: 22
+        delay: 10
+        timeout: 100
+        search_regex: OpenSSH
+        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
+
+
+
+- name: Install MYSQL packages
+  hosts: database-server
+  become: yes
+  tasks:
+    - name: Install pip
+      dnf:
+        name: pip
+        state: present
+
+    - name: Install PyMySQL
+      pip:
+        name: PyMySQL
+
+
+
+
+- name: Configure MSQL Database server
+  hosts: database-server
+  become: yes
+  vars_files:
+    - project-vars
+
+    # default root user does intial setup and creates sql_users
+
+  vars:
+
+    mysql_port: "3306"
+    mysql_bind_address: "0.0.0.0"
+
+    mysql_databases:
+      - name: example_db
+
+    mysql_users:
+      - name: appuser
+        password: "{{ sql_password }}"
+        host: "{{ web_server }}"     #"%" from web_server vars in inventory.ini
+        priv: "example_db.*:ALL"
+
+
+  roles:
+    - geerlingguy.mysql
+
+
+

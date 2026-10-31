@@ -1,0 +1,10 @@
+ansible/ansible.cfg
+terraform/*.tfvars
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+.vscode/
+java-app/build
+java-app/*.gradle
+ansible/ansible-config/project-vars
+

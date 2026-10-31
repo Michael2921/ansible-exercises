@@ -1,0 +1,130 @@
+---
+
+- name: Wait for SSH connection
+  hosts: ansible-server
+  gather_facts: False
+  tasks:
+    - name: Ensure SSH port open
+      wait_for:
+        port: 22
+        delay: 10
+        timeout: 100
+        search_regex: OpenSSH
+        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
+
+
+- name: Install required packages
+  become: yes
+  hosts: ansible-server
+  tasks:
+    - name: Update packages
+      dnf:
+        update_cache: yes
+
+    - name: Install ansible
+      dnf:
+        name: ansible
+        state: present
+
+
+    - name: Install geerlingguy.mysql role
+      community.general.ansible_galaxy_install:
+        type: role
+        name: geerlingguy.mysql
+        dest: /home/ec2-user/.ansible/roles
+
+
+
+- name: Upgrade MYSQL collection
+  hosts: ansible-server
+  tasks:
+    - name: Upgrade community.mysql
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install community.mysql --upgrade
+
+
+
+- name: Copy database config files to Ansible server
+  hosts: ansible-server
+  vars_files:
+    - project-vars
+  tasks:
+    - name: Copy database playbook files
+      copy:
+        src: "{{ src_path_database }}"
+        dest: /home/ec2-user/
+    - name: Copy inventory file
+      copy:
+        src: "{{ src_path_inventory }}"
+        dest: /home/ec2-user/database-config
+
+
+
+- name: Copy web config files to Ansible server
+  hosts: ansible-server
+  vars_files:
+    - project-vars
+  tasks:
+    - name: Copy web playbook files
+      copy:
+        src: "{{ src_path_web }}"
+        dest: /home/ec2-user/
+    - name: Copy inventory file
+      copy:
+        src: "{{ src_path_inventory }}"
+        dest: /home/ec2-user/web-config
+
+
+
+- name: Copy java app to Ansible server
+  hosts: ansible-server
+  vars_files:
+    - project-vars
+  tasks:
+    - name: Copy java files
+      copy:
+        src: "{{ src_path_java_app }}"
+        dest: /home/ec2-user/
+
+
+
+
+- name: Copy RedHat vars file to MySQL roles folder
+  hosts: ansible-server
+  become: yes
+  vars_files:
+    - project-vars
+  tasks:
+    - name: Copy vars file to ansible server
+      copy: 
+        src: "{{ src_path_redhat2023 }}"
+        dest: /home/ec2-user/.ansible/roles/geerlingguy.mysql/vars/
+
+
+- name: Copy private key for database and web server to Ansible server
+  hosts: ansible-server
+  vars_files:
+    - project-vars
+  tasks:
+  - name: Copy private key
+    copy:
+      src: "{{ src_path_private_key }}"
+      dest: /home/ec2-user/.ssh/
+      mode: '0600'
+
+
+
+
+  
+
+
+
+
+
+    
+
+
+

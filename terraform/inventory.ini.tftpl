@@ -1,0 +1,17 @@
+[ansible-server]
+server1 ansible_host=${ip_one} ansible_user=ec2-user
+
+[database-server]
+server2 ansible_host=${ip_two} ansible_user=ec2-user ansible_python_interpreter=/usr/bin/python3.9
+
+[web-server]
+server3 ansible_host=${ip_three_private} ansible_user=ec2-user
+
+
+[web-server:vars]
+db_server=${ip_two}
+
+
+[database-server:vars]
+web_server=${ip_three_private}
+

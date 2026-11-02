@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: custom-app
+  namespace: default
+  labels:
+    app: custom-app
+spec: 
+  replicas: 2
+  selector:
+    matchLabels:
+      app: custom-app
+  template:
+    metadata:
+      labels:
+        app: custom-app
+    spec:
+      imagePullSecrets:
+      - name: docker-secret
+      containers:
+      - name: kubernetes-app
+        image: michael101/java-maven-app:kubernetes-app
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+          - name: DB_USER
+            valueFrom:
+              configMapKeyRef:
+                name: customapp-configmap
+                key: DB_USER
+          - name: DB_PWD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: mysql-password
+          - name: DB_NAME
+            valueFrom:
+              configMapKeyRef: 
+                name: customapp-configmap
+                key: DB_NAME
+          - name: DB_SERVER
+            valueFrom:
+              configMapKeyRef:
+                name: customapp-configmap
+                key: DB_SERVER 
+          
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: customapp-service
+  namespace: default
+spec:
+  selector:
+    app: custom-app
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+        

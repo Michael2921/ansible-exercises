@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: customapp-configmap
+  namespace: default
+data:
+  PMA_HOST: mysql-release-primary
+  PMA_PORT: "3306"
+  DB_USER: myuser
+  DB_NAME: mydb
+  DB_SERVER: mysql-release-primary

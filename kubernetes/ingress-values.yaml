@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+    name: customapp-ingress
+    namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: "{{ elb_hostname }}"
+    http:
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: customapp-service
+              port:
+                number: 8080

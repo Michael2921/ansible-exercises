@@ -1,0 +1,165 @@
+---
+
+- name: Update Kubeconfig
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - project-vars
+  tasks:
+
+    - name: update kubeconfig
+      ansible.builtin.shell: >
+        aws eks update-kubeconfig
+        --region us-east-1
+        --name myapp-eks-cluster
+        --kubeconfig "{{ kubeconfig_path }}"
+
+
+- name: Install Helm and JDK
+  hosts: localhost
+  tasks:
+    
+    - name: install Helm
+      community.general.snap:
+        name: helm
+        state: present
+        classic: true
+
+
+
+- name: Add configmap, secret, and storageclass to cluster
+  hosts: localhost
+  tasks:
+
+    - name: Add configmap
+      kubernetes.core.k8s:
+        state: present
+        src: ../kubernetes/configmap.yaml
+
+    - name: Add mysql secret
+      kubernetes.core.k8s:
+        state: present
+        src: ../kubernetes/secret.yaml
+
+    - name: Add storageclass
+      kubernetes.core.k8s:
+        state: present
+        src: ../kubernetes/gp3-storageclass.yaml
+
+    - name: Create kubernetes Docker secret
+      kubernetes.core.k8s:
+        state: present
+        src: ../kubernetes/secret-docker.yaml
+
+
+- name: Add Bitnami MySQL repo, Nginx Repo, install MySQL release and Nginx ingress controller
+  hosts: localhost
+  tasks:
+
+    - name: Add Bitnami repo
+      kubernetes.core.helm_repository:
+        name: bitnami
+        repo_url: https://charts.bitnami.com/bitnami
+
+    - name: Add Nginx repo
+      kubernetes.core.helm_repository:
+        name: ingress-nginx
+        repo_url: https://kubernetes.github.io/ingress-nginx
+
+    - name: Install mysql release
+      kubernetes.core.helm:
+        name: mysql-release
+        chart_ref: bitnami/mysql
+        release_namespace: default
+        values_files:
+          - ../kubernetes/mysql-values.yaml
+
+    - name: Install Nginx controller
+      kubernetes.core.helm:
+        name: ingress-nginx-controller
+        chart_ref: ingress-nginx/ingress-nginx
+        release_namespace: default
+
+
+
+- name: Build the app and image
+  hosts: localhost
+  tasks: 
+
+    - name: Build application
+      command: "gradle build -p ../java-app"
+
+ 
+
+- name: Login, build and push image to repo
+  hosts: localhost
+  vars_files:
+    - project-vars
+  tasks:
+
+    - name: Authenticate to Docker
+      community.docker.docker_login:
+        registry_url: https://index.docker.io/v1/
+        username: "{{ docker_user }}"
+        password: "{{ docker_PAT }}"
+
+
+    - name: Build an image and push it to a private repo
+      community.docker.docker_image:
+        build:
+          path: ../java-app
+        name: michael101/java-maven-app
+        tag: kubernetes-app
+        push: true
+        source: build
+
+
+
+- name: Deploy java app
+  hosts: localhost
+  tasks:
+
+    - name: Deploy java app
+      kubernetes.core.k8s:
+        state: present
+        src: ../kubernetes/java-deployment.yaml
+
+
+
+- name: Get external IP for load balancer and apply to ingress
+  hosts: localhost
+  tasks:
+
+    - name: Get hostname for load balancer
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        namespace: default
+        name: ingress-nginx-controller-controller 
+      register: loadbalancer_hostname
+
+    - name: Set ELB hostname
+      ansible.builtin.set_fact:
+        elb_hostname: "{{ loadbalancer_hostname['resources'][0]['status']['loadBalancer']['ingress'][0]['hostname'] }}"
+
+    
+    - name: Deploy ingress
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('template', '../kubernetes/ingress-values.yaml') | from_yaml}}"
+    
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+

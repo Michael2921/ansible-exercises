@@ -1,0 +1,346 @@
+---
+
+- name: Wait for SSH connection
+  hosts: all
+  gather_facts: False
+  tasks:
+    - name: Ensure SSH port open
+      wait_for:
+        port: 22
+        delay: 10
+        timeout: 100
+        search_regex: OpenSSH
+        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
+
+
+
+- name: Install Java and Net-tools
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update dnf repo
+      dnf:
+        update_cache: true
+    - name: Install Java
+      dnf:
+        name: java-17-amazon-corretto-devel.x86_64
+        state: present
+    - name: Install Net-tools
+      dnf:
+        name: net-tools.x86_64
+        state: present
+
+
+- name: Install Gradle
+  hosts: all
+  tasks:
+    - name: Install SDK
+      shell: 'curl -s "https://get.sdkman.io" | bash'
+
+    - name: Install gradle
+      shell: |
+        source /home/ec2-user/.sdkman/bin/sdkman-init.sh
+        sdk install gradle  
+
+
+- name: Copy Java files to web-server
+  hosts: all
+  tasks:
+    - name: Copy java files to web-server
+      copy:
+        src: ../java-app # without trailing /, it creates the folder and copies contents into it. with / it copies contents without creating the folder
+        dest: /home/ec2-user/
+
+
+- name: Build the java file
+  hosts: all
+  tasks:
+
+    - name: Run gradle build
+      command: "gradle build -p /home/ec2-user/java-app/"
+      register: build_output
+
+    - name: Display build build output
+      ansible.builtin.debug:
+        var: build_output.stdout_lines
+
+
+
+
+- name: Download and unpack Nexus installer
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Get nexus folder stats
+      stat:
+        path: /opt/nexus
+      register: stat_result
+
+    - name: Download Nexus
+      get_url:
+        url: https://download.sonatype.com/nexus/3/latest-linux-x86_64.tar.gz
+        dest: /opt/
+      register: download_result
+
+    - name: Display download destination
+      ansible.builtin.debug:
+        var: download_result.dest
+
+    - name: Untar downloaded file
+      unarchive:
+        src: "{{ download_result.dest }}"
+        dest: /opt/
+        remote_src: yes
+      when: not stat_result.stat.exists
+
+    - name: Find nexus folder
+      find:
+        paths: /opt/
+        pattern: "nexus-*"
+        file_type: directory
+      register: find_result
+
+
+    - name: Rename nexus folder
+      shell: mv {{ find_result.files[0].path }} /opt/nexus
+      when: not stat_result.stat.exists
+
+
+- name: Make nexus user owner of nexus folders
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Create nexus group
+      group:
+        name: nexus
+        state: present
+
+    - name: Create nexus user
+      user:
+        name: nexus
+        group: nexus
+
+    - name: Make nexus user owner of nexus folder
+      file:
+        path: /opt/nexus
+        state: directory
+        owner: nexus
+        group: nexus
+        recurse: yes
+
+    - name: Make nexus user owner of sonatype-work folder
+      file:
+        path: /opt/sonatype-work
+        state: directory
+        owner: nexus
+        group: nexus
+        recurse: yes
+
+
+
+- name: Start nexus with nexus user
+  hosts: all
+  become: yes
+  become_user: nexus
+  tasks:
+
+    - name: Set run_as_user nexus
+      blockinfile:
+        path: /opt/nexus/bin/nexus.rc
+        create: yes
+        block: |
+          run_as_user="nexus"
+
+    - name: Start nexus
+      command: /opt/nexus/bin/nexus start
+
+
+
+- name: Verify nexus is running
+  hosts: all
+  tasks:
+
+
+    - name: Check nexus process
+      shell: ps aux | grep nexus
+      register: nexus_process_status
+    - debug: msg={{ nexus_process_status.stdout_lines }}
+    
+    - name: Wait 30 seconds
+      pause:
+        seconds: 30
+
+    - name: Check with netstat
+      command: netstat -plnt
+      register: nexus_network_status
+    - debug: msg={{ nexus_network_status.stdout_lines }}
+
+
+
+# Setup Nexus server and deploy java application to it
+
+
+- name: Get external IP
+  hosts: all
+  tasks:
+
+    - name: Get external public IP
+      ansible.builtin.uri:
+        url: https://api.ipify.org
+        return_content: true
+      register: public_ip
+    - debug: msg={{ public_ip.content }}
+
+    - name: Save nexus URL as a fact
+      ansible.builtin.set_fact:
+        nexus_url: "http://{{ public_ip.content | trim }}:8081"
+    - debug: msg={{ nexus_url }}
+
+
+# Change intial admin password
+
+
+- name: Change initial admin password
+  hosts: all
+  vars_files:
+    - project-vars
+  tasks:
+
+    - name: Retrieve initial admin password
+      command: cat /opt/sonatype-work/nexus3/admin.password
+      register: initial_password
+
+    - name: Change admin password
+      ansible.builtin.uri:
+        url: "{{nexus_url}}/service/rest/v1/security/users/admin/change-password"
+        method: PUT
+        url_username: admin
+        url_password: "{{initial_password.stdout}}"
+        force_basic_auth: true
+        headers:
+          Content-Type: text/plain
+        body: "{{ nexus_adminpass }}"
+        status_code: 204
+      no_log: false
+
+
+- name: Accept Nexus EULA
+  hosts: all
+  vars_files:
+    - project-vars
+  tasks:
+
+    - name: Retrieve Disclaimer
+      ansible.builtin.uri:
+        url: "{{ nexus_url }}/service/rest/v1/system/eula"
+        method: GET
+        url_username: admin
+        url_password: "{{ nexus_adminpass }}"
+        force_basic_auth: true
+        return_content: true
+        status_code: 200
+      register: nexus_eula
+
+    - name: Accept EULA
+      ansible.builtin.uri:
+        url: "{{ nexus_url }}/service/rest/v1/system/eula"
+        method: POST
+        url_username: admin
+        url_password: "{{ nexus_adminpass }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          disclaimer: "{{ nexus_eula.json.disclaimer }}"
+          accepted: true
+        status_code: [200 ,204]
+
+
+
+# # Create nexus role with needed privilege
+
+- name: Create nexus role
+  hosts: all
+  vars_files:
+    - project-vars
+  tasks:
+
+    - name:
+      ansible.builtin.uri:
+        url: "{{nexus_url}}/service/rest/v1/security/roles"
+        method: POST
+        url_username: admin
+        url_password: "{{nexus_adminpass}}"
+        force_basic_auth: true
+        headers:
+          Content-Type: application/json
+        body_format: json
+        body:
+          id: "maven-snapshots-admin-role"
+          name: "Maven Snapshots Admin Role"
+          description: "Full access to Maven Snapshots"
+          privileges:
+            -  "nx-repository-view-maven2-maven-snapshots-*"
+          roles: []
+        status_code: 200
+      no_log: false
+      
+
+
+
+- name: Create new nexus user
+  hosts: all
+  vars_files:
+    - project-vars
+  tasks:
+
+    - name:
+      ansible.builtin.uri:
+        url: "{{nexus_url}}/service/rest/v1/security/users"
+        method: POST
+        url_username: admin
+        url_password: "{{nexus_adminpass}}"
+        force_basic_auth: true
+        headers:
+          Content-Type: application/json
+        body_format: json
+        body:
+          userId: "nexususer"
+          firstName: "nexus"
+          lastName: "user"
+          emailAddress: "nexuser@nexus.user"
+          password: "{{nexus_userpass}}"
+          status: "active"
+          roles:
+            - "maven-snapshots-admin-role"
+        status_code: 200
+      no_log: false
+
+
+- name: Push JAR file to repo
+  hosts: all
+  vars_files:
+    - project-vars
+  tasks:
+
+# rest API does not support uploads to snapshot repos
+# /<groupId>/<artifactId>/<version>/<artifactId>-<version>.<extension>
+# body_format: json helps with the request size
+# EULA must be accepted before pushing to repo
+
+    - name: Push JAR file 
+      ansible.builtin.uri:
+        url: "{{nexus_url}}/repository/maven-snapshots/com/example/{{ artifact_name }}/{{ artifact_version }}/{{ artifact_name }}-{{ artifact_version }}.jar"
+        method: PUT
+        url_username: nexususer
+        url_password: "{{nexus_userpass}}"
+        force_basic_auth: true
+        src: "{{ jar_path }}"
+        body_format: json
+        remote_src: true
+        status_code: 201
+      no_log: false

@@ -1,0 +1,1 @@
+This project uses Terraform to provision an EC2 instance and Ansible to set up a Nexus server by installing required packages, automating setup via the Nexus REST APIs, and deploying a custom application to the Maven snapshot repository.

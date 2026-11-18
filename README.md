@@ -1,0 +1,1 @@
+This project uses Ansible to copy and execute a Java file on a remote server. It takes the target user as input. If the user exists, it executes the file as that user. If the user doesn't exist, it creates the user first and then uses them to execute the file.

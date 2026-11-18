@@ -1,0 +1,1 @@
+This project uses Terraform and Ansible roles to deploy and configure a MySQL server, then tests connections using a custom Java application. The database server is only accessible within the VPC where the web and database servers are deployed. However, the web server has to be publicly accessible on port 8080 to access the web application.

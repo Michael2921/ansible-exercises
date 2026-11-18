@@ -1,0 +1,1 @@
+This project uses Terraform to provision an EC2 instance and uses Ansible to configure the system and install Jenkins. It installs the required packages, sets up the Jenkins repo, and installs Jenkins. It then starts the Jenkins service and verifies that it runs properly.

@@ -15,7 +15,7 @@
         --kubeconfig "{{ kubeconfig_path }}"
 
 
-- name: Install Helm and JDK
+- name: Install Helm
   hosts: localhost
   tasks:
     

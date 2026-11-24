@@ -6,7 +6,6 @@ terraform/*.tfstate.backup
 .vscode/
 java-app/build
 java-app/*.gradle
-ansible/project-vars
 kubernetes/secret.yaml
 kubernetes/secret-docker.yaml
 

@@ -64,6 +64,7 @@ associations = {
 
 resource "null_resource" "configure_cluster" {
 
+
     triggers = {
         trigger_one = module.eks.cluster_name
 

@@ -1,0 +1,3 @@
+kubeconfig_path: /mnt/c/Users/samue/.kube/config
+docker_user: michael101
+docker_PAT: [DOCKER_PAT]
